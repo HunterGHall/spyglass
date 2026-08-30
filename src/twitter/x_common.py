@@ -17,10 +17,61 @@ from __future__ import annotations
 import json
 import math
 import os
+import random
 import re
+import threading
 import time
 
 import requests
+
+
+# --------------------------------------------------------------------------- #
+# tokens.conf loader (KEY = value lines; env vars win)
+# --------------------------------------------------------------------------- #
+
+def _load_tokens_conf() -> None:
+    here = os.path.dirname(os.path.abspath(__file__))
+    for _ in range(8):
+        path = os.path.join(here, "tokens.conf")
+        if os.path.isfile(path):
+            with open(path, encoding="utf-8") as fh:
+                for line in fh:
+                    line = line.strip()
+                    if not line or line.startswith("#") or "=" not in line:
+                        continue
+                    key, _, val = line.partition("=")
+                    key, val = key.strip(), val.strip().strip("\"'")
+                    if key and val and key not in os.environ:
+                        os.environ[key] = val
+            return
+        parent = os.path.dirname(here)
+        if parent == here:
+            return
+        here = parent
+
+
+_load_tokens_conf()
+
+
+# --------------------------------------------------------------------------- #
+# client-side rate limiting: sleep a random PACE_MIN..PACE_MAX s between requests
+# --------------------------------------------------------------------------- #
+
+class PacedSession(requests.Session):
+    """requests.Session that paces every request (shared across instances)."""
+
+    _lock = threading.Lock()
+    _next_at = 0.0
+
+    def request(self, *args, **kwargs):
+        lo = float(os.environ.get("PACE_MIN", 3))
+        hi = float(os.environ.get("PACE_MAX", 7))
+        with PacedSession._lock:
+            now = time.monotonic()
+            if now < PacedSession._next_at:
+                time.sleep(PacedSession._next_at - now)
+            PacedSession._next_at = time.monotonic() + random.uniform(lo, hi)
+        return super().request(*args, **kwargs)
 
 # Public bearer token shipped in the x.com web bundle. Not a secret.
 WEB_BEARER = (
@@ -117,39 +168,10 @@ def tweet_id_from(value: str) -> str:
 
 
 def new_session() -> requests.Session:
-    session = requests.Session()
+    session = PacedSession()
     session.headers.update({"User-Agent": _UA, "Accept": "*/*"})
     apply_login(session)
     return session
-
-
-CONF_FILE = "tokens.conf"
-
-
-def _load_conf() -> None:
-    """Read `tokens.conf` (`KEY = value` lines) into the environment.
-
-    Only fills keys that aren't already set, so real env vars still win. Looked
-    up next to this file so the scripts work from any working directory.
-    """
-    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), CONF_FILE)
-    try:
-        with open(path, encoding="utf-8") as fh:
-            lines = fh.readlines()
-    except OSError:
-        return
-    for line in lines:
-        line = line.strip()
-        if not line or line.startswith("#") or "=" not in line:
-            continue
-        key, _, value = line.partition("=")
-        key = key.strip()
-        value = value.strip().strip('"').strip("'")
-        if key and value and key not in os.environ:
-            os.environ[key] = value
-
-
-_load_conf()
 
 
 def apply_login(session: requests.Session) -> bool:
