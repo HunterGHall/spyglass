@@ -15,23 +15,31 @@ pip install -r requirements.txt   # requests, plus instagrapi for Instagram
 | **X / Twitter** | [`src/twitter/`](src/twitter/) | [src/twitter/tokens.md](src/twitter/tokens.md) |
 | **Instagram** | [`src/instagram/`](src/instagram/) | [src/instagram/tokens.md](src/instagram/tokens.md) |
 | **YouTube** | [`src/youtube/`](src/youtube/) | [src/youtube/tokens.md](src/youtube/tokens.md) (usually none) |
+| **Reddit** | [`src/reddit/`](src/reddit/) | [src/reddit/tokens.md](src/reddit/tokens.md) |
+| **Discord** | [`src/discord/`](src/discord/) | [src/discord/tokens.md](src/discord/tokens.md) (mostly none) |
 
-Each folder has the same four tools (YouTube names in parentheses):
+Each folder has the same four tools. Names vary where the platform's concepts
+differ:
 
-| Script | Gives |
-| --- | --- |
-| `*_follower_count.py` / `yt_subscriber_count.py` | follower / subscriber count |
-| `*_profile.py` / `yt_channel.py` | bio/description, links, lifetime counts, flags |
-| `*_post_stats.py` / `yt_video_stats.py` | one post/video: views, likes, comments, and (YT) engagement rates, format/resolution/HDR/codecs, captions, live & age flags |
-| `*_recent_posts.py` / `yt_recent_videos.py` | recent posts/uploads, each with stats (`yt_recent_videos.py --deep` for exact per-video numbers) |
+| Twitter / Instagram | YouTube | Reddit | Discord |
+| --- | --- | --- | --- |
+| `*_follower_count.py` | `yt_subscriber_count.py` | `reddit_karma.py` | `discord_member_count.py` |
+| `*_profile.py` | `yt_channel.py` | `reddit_profile.py` (user *or* `r/sub`) | `discord_server.py` |
+| `*_post_stats.py` | `yt_video_stats.py` | `reddit_post_stats.py` | `discord_user.py` |
+| `*_recent_posts.py` | `yt_recent_videos.py` | `reddit_recent_posts.py` | `discord_widget.py` |
 
 All take `--json` and can be imported (`from x_profile import get_profile`,
-`from ig_profile import get_profile`, `from yt_video_stats import get_video_stats`).
+`from yt_video_stats import get_video_stats`, `from reddit_profile import
+get_profile`, …).
 
-Twitter and YouTube hit the web endpoints directly with `requests`. Instagram
-goes through [instagrapi](https://github.com/subzeroid/instagrapi), which speaks
-the private mobile API and keeps working from datacenter IPs given a real
-`sessionid`.
+Instagram also has [`ig_followers.py`](src/instagram/ig_followers.py) — lists
+the actual followers (or `--following`) of an account. Instagram throttles
+follower enumeration aggressively, so keep `--limit` modest.
+
+Twitter, YouTube, Reddit and Discord hit the web/JSON endpoints directly with
+`requests`. Instagram goes through
+[instagrapi](https://github.com/subzeroid/instagrapi), which speaks the private
+mobile API and keeps working from datacenter IPs given a real `sessionid`.
 
 ## Tokens
 
@@ -44,12 +52,20 @@ X_AUTH_TOKEN = ...
 X_CT0 = ...
 IG_SESSIONID = ...
 YT_COOKIE = ...
+REDDIT_CLIENT_ID = ...
+REDDIT_CLIENT_SECRET = ...
+DISCORD_TOKEN = ...
 ```
 
-X works logged-out (its timeline just lags); Instagram requires `IG_SESSIONID`;
-YouTube needs nothing unless it starts bot-gating your IP, in which case set
-`YT_COOKIE`. See each platform's `tokens.md` for where to find the values. A
-matching environment variable overrides the file.
+- **X** works logged-out (its timeline just lags).
+- **Instagram** requires `IG_SESSIONID`.
+- **YouTube** needs nothing unless it starts bot-gating your IP → `YT_COOKIE`.
+- **Reddit** needs `REDDIT_CLIENT_ID` (+ secret for a "script" app) from a
+  datacenter/VPN IP; works bare from a home connection.
+- **Discord** needs `DISCORD_TOKEN` only for `discord_user.py`.
+
+See each platform's `tokens.md` for where to find the values. A matching
+environment variable overrides the file.
 
 ## Caveats
 
@@ -58,6 +74,6 @@ without notice, and are against each platform's Terms of Service. Use throwaway
 accounts. For anything reliable, use the official APIs.
 
 To stay under the rate limits, requests are paced a random **3–7 s apart**
-(Twitter/YouTube via a `PacedSession`; Instagram via instagrapi's
-`delay_range`). Multi-request commands like `*_recent_posts.py --limit 100` take
-a while. Override with the `PACE_MIN` / `PACE_MAX` environment variables.
+(most platforms via a `PacedSession`; Instagram via instagrapi's `delay_range`).
+Multi-request commands like `*_recent_posts.py --limit 100` take a while.
+Override with the `PACE_MIN` / `PACE_MAX` environment variables.
