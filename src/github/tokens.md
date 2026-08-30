@@ -1,8 +1,8 @@
 # GitHub token (optional but recommended)
 
-GitHub has a real REST API, so these scripts just call it - no scraping, no
-account cookie. Everything works with **no token**, but anonymous requests are
-limited to **60 per hour per IP**. `gh_repo_stats.py` alone spends ~7 of those.
+`github.py` just calls the real REST API - no scraping, no account cookie.
+Everything works with **no token**, but anonymous requests are limited to
+**60 per hour per IP**, and the `repo` command alone spends ~7 of those.
 
 A **personal access token** raises the limit to **5,000/hour**.
 

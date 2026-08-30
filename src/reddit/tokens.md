@@ -8,7 +8,7 @@ from datacenter, cloud, and VPN IPs. The fix is a free OAuth app (100 req/min).
 1. Go to <https://www.reddit.com/prefs/apps> (logged in).
 2. Click **"are you a developer? create an app…"**.
 3. Fill in:
-   - **name:** anything (e.g. `dossier`)
+   - **name:** anything (e.g. `spyglass`)
    - **type:** choose **script** (personal use) or **installed app**
    - **redirect uri:** `http://localhost:8080` (required but unused)
 4. Create it. You'll see:

@@ -1,14 +1,13 @@
 # YouTube token (usually not needed)
 
-The YouTube scripts read public data straight from the page HTML and the
-InnerTube API — **no token required** in most cases. `yt_channel.py`,
-`yt_subscriber_count.py`, and `yt_recent_videos.py` (without `--deep`) work
-with no setup.
+`youtube.py` reads public data straight from the page HTML and the InnerTube
+API — **no token required** in most cases. The `channel`, `subs`, and `recent`
+(without `--deep`) commands work with no setup.
 
 You only need a cookie when YouTube starts answering with *"Sign in to confirm
 you're not a bot"* — which it does for watch-page requests from datacenter,
-cloud, and VPN IP ranges. That mainly affects `yt_video_stats.py` and
-`yt_recent_videos.py --deep`.
+cloud, and VPN IP ranges. That mainly affects the `video` command and
+`recent --deep`.
 
 Use a **throwaway account**.
 
