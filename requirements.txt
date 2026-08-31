@@ -1,2 +1,3 @@
 requests>=2.31
 instagrapi>=2.1        # Instagram scrapers only
+playwright>=1.44       # people_search/true_people_search.py (run: playwright install chromium)
