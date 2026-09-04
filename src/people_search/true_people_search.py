@@ -23,8 +23,10 @@ from __future__ import annotations
 
 import argparse
 import json
+import random
 import re
 import sys
+import time
 import urllib.parse
 
 from playwright.sync_api import TimeoutError as PWTimeout
@@ -48,6 +50,8 @@ def fetch_html(url: str, *, headless: bool = True, timeout: float = 45.0) -> str
 
     Raises RuntimeError if Cloudflare never clears or the page times out.
     """
+    time.sleep(random.uniform(3, 7))  # human-ish pacing before hitting the site
+
     with sync_playwright() as p:
         browser = p.chromium.launch(
             headless=headless,
@@ -96,10 +100,19 @@ def fetch_html(url: str, *, headless: bool = True, timeout: float = 45.0) -> str
             browser.close()
 
     lowered = html.lower()
-    if "just a moment" in lowered or "attention required" in lowered:
+    challenge = (
+        "just a moment" in lowered
+        or "attention required" in lowered
+        or "<title>captcha</title>" in lowered
+        or "captchatoken" in lowered
+    )
+    if challenge:
         raise RuntimeError(
-            "Cloudflare challenge did not clear. Try --headful, a residential "
-            "proxy, or increase --timeout."
+            "TruePeopleSearch served an anti-bot challenge (Cloudflare / Turnstile "
+            "captcha) instead of results. This is IP-based - datacenter IPs "
+            "(cloud, CI, Codespaces) are almost always blocked. Use a residential "
+            "proxy, run from a residential connection, or plug in a captcha-solving "
+            "service. --headful and a longer --timeout alone will not clear it."
         )
     return html
 
@@ -185,6 +198,43 @@ def _parse_results(html: str) -> list[dict]:
     return out
 
 
+def _parse_detail(html: str) -> dict:
+    """Pull the fields off a /find/person/<id> detail page.
+
+    Layout here is far less stable than the results list, so this grabs what
+    it can via loose regexes and always keeps raw_text so nothing is lost if
+    a selector no longer matches.
+    """
+    flat = _text(html)
+
+    header = re.search(r'id="personDetails"[^>]*>(.*?)</', html, flags=re.S)
+    name = _text(header.group(1)) if header else None
+
+    age = re.search(r"\bAge\s+(\d{1,3})\b", flat)
+    phones = sorted(set(re.findall(r'href="tel:([\d+()\-. ]+)"', html)))
+    emails = sorted(set(re.findall(r'href="mailto:([^"]+)"', html)))
+
+    stops = ["Previous Addresses", "Used to live in", "Phone", "Email", "Relatives", "Associates", "Related to"]
+    current_address = (
+        _between(flat, "Current Address", stops)
+        or _between(flat, "Lives in", stops)
+    )
+
+    return {
+        "name": name,
+        "age": int(age.group(1)) if age else None,
+        "current_address": current_address,
+        "phones": phones,
+        "emails": emails,
+        "raw_text": flat,
+    }
+
+
+def fetch_detail(url: str, **kw) -> dict:
+    """Load a person's detail page and parse it. Same pacing/kwargs as fetch_html."""
+    return _parse_detail(fetch_html(url, **kw))
+
+
 # ========================================================================== #
 # public API
 # ========================================================================== #
@@ -207,6 +257,26 @@ def search_address(address: str, **kw) -> list[dict]:
     return _parse_results(fetch_html(url, **kw))
 
 
+def _describe(r: dict) -> str:
+    bits = [r["name"] or "?"]
+    if r["age"]:
+        bits.append(f"age {r['age']}")
+    if r["lives_in"]:
+        bits.append(r["lives_in"])
+    return " - ".join(bits)
+
+
+def _prompt_choice(results: list[dict]) -> dict:
+    """Print numbered results and prompt on stdin for which one to keep."""
+    for i, r in enumerate(results, 1):
+        print(f"[{i}] {_describe(r)}")
+    while True:
+        choice = input(f"pick 1-{len(results)}: ").strip()
+        if choice.isdigit() and 1 <= int(choice) <= len(results):
+            return results[int(choice) - 1]
+        print("invalid choice")
+
+
 # ========================================================================== #
 # CLI
 # ========================================================================== #
@@ -223,12 +293,15 @@ def main(argv: list[str] | None = None) -> int:
     p_name = sub.add_parser("name", help="search by person name", parents=[common])
     p_name.add_argument("query")
     p_name.add_argument("--citystatezip", default="")
+    p_name.add_argument("--pick", action="store_true", help="prompt to choose one match")
 
     p_phone = sub.add_parser("phone", help="reverse phone lookup", parents=[common])
     p_phone.add_argument("query")
+    p_phone.add_argument("--pick", action="store_true", help="prompt to choose one match")
 
     p_addr = sub.add_parser("address", help="reverse address lookup", parents=[common])
     p_addr.add_argument("query")
+    p_addr.add_argument("--pick", action="store_true", help="prompt to choose one match")
 
     p_raw = sub.add_parser("raw", help="dump rendered HTML for a full URL", parents=[common])
     p_raw.add_argument("url")
@@ -250,22 +323,25 @@ def main(argv: list[str] | None = None) -> int:
         print(f"error: {e}", file=sys.stderr)
         return 1
 
+    if getattr(args, "pick", False) and results:
+        chosen = _prompt_choice(results) if len(results) > 1 else results[0]
+        try:
+            chosen = {**chosen, "detail": fetch_detail(chosen["detail_url"], **kw)}
+        except RuntimeError as e:
+            print(f"error fetching detail: {e}", file=sys.stderr)
+        results = [chosen]
+
     if args.json:
         print(json.dumps(results, indent=2))
     elif not results:
         print("no results")
     else:
         for r in results:
-            bits = [r["name"] or "?"]
-            if r["age"]:
-                bits.append(f"age {r['age']}")
-            if r["lives_in"]:
-                bits.append(r["lives_in"])
-            print(" - ".join(bits))
+            print(_describe(r))
             if r["detail_url"]:
                 print(f"  {r['detail_url']}")
     return 0
 
 
 if __name__ == "__main__":
-    print(search_name('John Doe', '12345'))
+    sys.exit(main())
