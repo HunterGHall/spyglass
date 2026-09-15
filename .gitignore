@@ -1,3 +1,5 @@
 __pycache__/
 *.pyc
 tokens.conf
+credentials.conf
+ig_session.json
